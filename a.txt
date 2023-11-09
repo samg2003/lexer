@@ -1,0 +1,112 @@
+let numeric = ['0' - '9']
+let lowercase = ['a' - 'z']
+let letter =['a' - 'z' 'A' - 'Z' '_']
+
+rule token = parse
+  | [' ' '\t' '\n'] { token lexbuf }  (* skip over whitespace *)
+
+  | "(*"  {find_closing_ones 1 lexbuf}
+  | ("//") { idk_how_to_do_it_without_this lexbuf }
+
+  | numeric+ as thingy {INT (int_of_string thingy)}
+  | "0b"['0' '1']+ as thingy {INT (int_of_string thingy)}
+  | "0x"(['a' 'b' 'c' 'd' 'e' 'f'] | numeric)+ as thingy {
+     INT (int_of_string thingy)}
+  | numeric+ ['.'] numeric+  as thingy {FLOAT (float_of_string thingy)}
+  | numeric+ ['.'] numeric+ ['e'] numeric+   as thingy {FLOAT (float_of_string thingy)}
+
+  | "true" {TRUE}
+  | "false" {FALSE}
+  | "()" {UNIT}
+  | ['_'] {UNDERSCORE}
+  | [','] {COMMA}
+  | [')'] {RPAREN}
+  | ['('] {LPAREN}
+  | "[]" {NIL}
+  | ['['] {LBRAC}
+  | [']'] {RBRAC}
+  | "||" {LOGICALOR}
+  | "&&" {LOGICALAND}
+  | "not" {NOT}
+  | "with" {WITH}
+  | "try" {TRY}
+  | "raise" {RAISE}
+  | "mod" {MOD}
+  | "fun" {FUN}
+  | "else" {ELSE}
+  | "then" {THEN}
+  | "if" {IF}
+  | "in" {IN}
+  | "end" {END}
+  | "and" {AND}
+  | "rec" {REC}
+  | "let" {LET}
+  | ['@'] {AT}
+  | "::" {DCOLON}
+  | ";;" {DSEMI}
+  | [';'] {SEMI}
+  | "->" {ARROW}
+  | "|" {PIPE}
+  | "<>" {NEQ}
+  | "<=" {LEQ}
+  | ">=" {GEQ}
+  | ['='] {EQUALS}
+  | ['>'] {GT}
+  | ['<'] {LT}
+  | ['^'] {CARAT}
+  | "/." {DDIV}
+  | "*." {DTIMES}
+  | "-." {DMINUS}
+  | "+." {DPLUS}
+  | ['/'] {DIV}
+  | ['*'] {TIMES}
+  | ['-'] {MINUS}
+  | ['+'] {PLUS}
+  | ['~'] {NEG}
+
+  | "\""    { string_fun "" lexbuf }
+
+  | lowercase (letter | ['\''] | numeric)* as thingy {IDENT thingy}
+
+  
+  | eof             { EOF } 
+
+and idk_how_to_do_it_without_this = parse
+ | "\n" {token lexbuf}
+ | eof {EOF}
+ | _ {idk_how_to_do_it_without_this lexbuf}
+
+ 
+and ignored_characters collector = parse
+ | [' ' '\t']  { ignored_characters collector lexbuf }   (*Ignore space and tabs after we see \n *)
+ | "\""     { STRING collector } (*If \* without \\ then it's end *)
+ | "\\"	    { unique_ones collector lexbuf } (* Ignore but next char is bougie *)
+ | _ as thingy   { string_fun (collector ^ (String.make 1 thingy)) lexbuf } 
+
+and unique_ones collector = parse
+ | "\\"   { string_fun (collector ^ "\\") lexbuf }
+ | "\'"   { string_fun (collector ^ "\'") lexbuf }
+ | "\""   { string_fun (collector ^ "\"") lexbuf }
+ | "t"    { string_fun (collector ^ "\t") lexbuf }
+ | "n"    { string_fun (collector ^ "\n") lexbuf }
+ | "r"    { string_fun (collector ^ "\r") lexbuf }
+ | "b"    { string_fun (collector ^ "\b") lexbuf }
+ | " "	 { string_fun (collector ^ " ") lexbuf }
+ | "\n"         { ignored_characters collector lexbuf } (*if new line *)
+ |    ((['0' - '1'](numeric)(numeric) (*LEFT SIDE INCLUDES 000 to 199*) |  
+      (['2'](['0' - '4'](numeric) | (['5']['0' - '5'])))) as thingy) 
+   { string_fun (collector ^ (String.make 1 (char_of_int (int_of_string thingy)))) lexbuf } 
+
+and string_fun collector = parse
+ | "\""     { STRING collector }
+ | "\\"	   { unique_ones collector lexbuf }
+ | _ as thingy   { string_fun (collector ^ (String.make 1 thingy)) lexbuf }
+
+
+and find_closing_ones stack = parse
+ | "(*" {find_closing_ones (stack + 1) lexbuf}
+ | "*)" {if stack = 0 then raise (Failure "unmatched open comment") 
+         else if stack = 1 then token lexbuf
+         else find_closing_ones (stack - 1) lexbuf}
+ | eof {raise (Failure "unmatched open comment") }
+ | _ {find_closing_ones stack lexbuf}
